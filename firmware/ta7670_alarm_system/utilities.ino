@@ -27,6 +27,32 @@ bool sendATCommand(const String &cmd, const String &expected, uint32_t timeout =
   return false;
 }
 
+bool waitNetwork(uint32_t timeout = 30000) {
+  uint32_t start = millis();
+
+  while (millis() - start < timeout) {
+    SerialAT.println("AT+CREG?");
+    String r = "";
+
+    uint32_t t = millis();
+    while (millis() - t < 1000) {
+      while (SerialAT.available()) {
+        r += (char)SerialAT.read();
+      }
+    }
+
+    Serial.println(r);
+
+    if (r.indexOf("+CREG: 0,1") != -1 || r.indexOf("+CREG: 0,5") != -1) {
+      return true;
+    }
+
+    delay(1000);
+  }
+
+  return false;
+}
+
 void checkSIM() {
   // Basic AT test
   if (sendATCommand("AT", "OK")) {
@@ -75,6 +101,9 @@ void checkSIM() {
         Serial.println("SMS mode set to text");
         if (sendATCommand("AT+CNMI=2,1,0,0,0", "OK")) {
           Serial.println("Activated ESP32 SMS notification");
+          if (sendATCommand("AT+CSCS=\"GSM\"", "OK")) {
+            Serial.println("SMS charset set to GSM");
+          }
         }
       }
     } else {
@@ -82,6 +111,14 @@ void checkSIM() {
     }
   } else {
     Serial.println("Unknown SIM state");
+  }
+
+  if (waitNetwork()) {
+    if (emergencyContact.length() > 0) {
+      sendSMS(emergencyContact, "System started");
+    }
+  } else {
+    Serial.println("Network not ready, skipping boot SMS");
   }
 }
 
@@ -143,6 +180,23 @@ void handleSMS(String msg, int index) {
     deleteSMS(index);
   }
 
+  else if (body.startsWith("SETEMERGENCY")) {
+    // format: SETEMERGENCY +1234567890
+    int sp = body.indexOf(' ');
+    if (sp != -1) {
+      emergencyContact = body.substring(sp + 1);
+      emergencyContact.trim();
+
+      prefs.putString("emergency", emergencyContact);
+
+      sendSMS(sender, "Emergency contact set");
+    } else {
+      sendSMS(sender, "Usage: SETEMERGENCY +number");
+    }
+
+    deleteSMS(index);
+  }
+
   else if (body == "DISARM") {
     armed = false;
     prefs.putBool("armed", armed);
@@ -155,10 +209,13 @@ void handleSMS(String msg, int index) {
     String status = getSMSStatus();
     String state =
       armed ? "ARMED" : "DISARMED";
+    String emergency = emergencyContact.length() > 0
+                         ? emergencyContact
+                         : "not set";
 
     sendSMS(
       sender,
-      "State: " + state + "\nSMS: " + status);
+      "State: " + state + "\nSMS: " + status + "\nEmergency: " + emergency);
     deleteSMS(index);
   }
 
@@ -263,3 +320,4 @@ String getSMSStatus() {
 
   return String(used - 1) + "/" + String(max);
 }
+

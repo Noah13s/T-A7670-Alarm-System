@@ -16,6 +16,7 @@ Preferences prefs;
 String line = "";
 
 bool armed = false;
+String emergencyContact = "";
 
 uint32_t AutoBaud() {
   static uint32_t rates[] = { 115200, 9600, 57600, 38400, 19200, 74400, 74880,
@@ -45,6 +46,7 @@ void setup() {
 
   prefs.begin("alarm", false);
   armed = prefs.getBool("armed", false);
+  emergencyContact = prefs.getString("emergency", "");
 
   SerialAT.begin(115200, SERIAL_8N1, MODEM_RX_PIN, MODEM_TX_PIN);
 
