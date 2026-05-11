@@ -10,7 +10,6 @@
 #include "Arduino.h"
 #include <Preferences.h>
 
-#define USER_LED 4
 #define SIM_PIN "1234"
 
 Preferences prefs;
@@ -46,8 +45,6 @@ void setup() {
 
   prefs.begin("alarm", false);
   armed = prefs.getBool("armed", false);
-
-  pinMode(USER_LED, OUTPUT);
 
   SerialAT.begin(115200, SERIAL_8N1, MODEM_RX_PIN, MODEM_TX_PIN);
 

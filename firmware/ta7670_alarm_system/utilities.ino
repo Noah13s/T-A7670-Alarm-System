@@ -137,7 +137,6 @@ void handleSMS(String msg, int index) {
   Serial.println("]");
 
   if (body == "ARM") {
-    digitalWrite(USER_LED, HIGH);
     armed = true;
     prefs.putBool("armed", armed);
     sendSMS(sender, "System armed");
@@ -145,7 +144,6 @@ void handleSMS(String msg, int index) {
   }
 
   else if (body == "DISARM") {
-    digitalWrite(USER_LED, LOW);
     armed = false;
     prefs.putBool("armed", armed);
     sendSMS(sender, "System disarmed");
