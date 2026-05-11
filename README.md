@@ -20,6 +20,19 @@ LTE-connected alarm system built around the SIMCom A7670 modem for remote monito
 | Upload Speed                         | 921600                               |
 | Programmer                           | **Esptool**                          |
 
+## Bill of Materials
+
+| Component                     | Quantity | Unit Price (€) | Total (€) | Notes                             |
+|------------------------------|----------|----------------|-----------|------------------------------------|
+| Microcontroller              | 1        | 47.47          | 47.47     | Pre-soldered T-A7670E              |
+| Vibration sensor             | 1        | 0.70           | 0.70      | SW-420                             |
+| DC-DC Step Up                | 1        | 1.43           | 1.43      | XL6019                             |
+| SIM Card                     | 1        | 2 per month    | 12        | Unlimited SMS plan                 |
+| 120db Alarm                  | 1        | 3.09           | 3.09      | QSI-4840                           |
+| Battery (18650)              | 1        | 1.75           | 1.75      | DMEGC INR18650-32E 3200mAh - 10A   |
+| Misc (wires, screws)         | 1        | 2.46           | 2.46      | Approximation                      |
+| **Total**                    |          |                | **77.32** |                                    |
+
 ```mermaid
 stateDiagram-v2
     [*] --> Disarmed
