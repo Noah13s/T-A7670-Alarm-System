@@ -19,3 +19,53 @@ LTE-connected alarm system built around the SIMCom A7670 modem for remote monito
 | PSRAM                                | **Enable**                           |
 | Upload Speed                         | 921600                               |
 | Programmer                           | **Esptool**                          |
+
+```mermaid
+stateDiagram-v2
+    [*] --> Disarmed
+
+    Disarmed --> ArmingDelay : Arm
+    ArmingDelay --> Armed : Delay complete
+    ArmingDelay --> Disarmed : Disarm
+
+    state Armed {
+
+        [*] --> Monitoring
+
+        Monitoring --> Warning : Minor vibration
+        Monitoring --> Triggered : Strong/repeated vibration
+
+        Warning --> Monitoring : Activity stops
+        Warning --> Triggered : Continued vibration
+
+        Triggered --> Cooldown : Alarm timeout
+        Cooldown --> Monitoring : Cooldown complete
+
+        Monitoring --> AutoDisarm : Ignition ON
+        Warning --> AutoDisarm : Ignition ON
+
+        AutoDisarm --> [*]
+    }
+
+    Armed --> Disarmed : Auto disarm
+    Armed --> Disarmed : Manual disarm
+
+    Disarmed --> StolenMode : Enable stolen mode
+
+    state StolenMode {
+
+        [*] --> StolenMonitoring
+
+        StolenMonitoring --> WarningStolen : Minor vibration
+        StolenMonitoring --> TriggeredStolen : Ignition ON
+        StolenMonitoring --> TriggeredStolen : Strong/repeated vibration
+
+        WarningStolen --> StolenMonitoring : Activity stops
+        WarningStolen --> TriggeredStolen : Continued vibration
+
+        TriggeredStolen --> StolenCooldown : Alarm timeout
+        StolenCooldown --> StolenMonitoring : Cooldown complete
+    }
+
+    StolenMode --> Disarmed : Manual disarm
+```
