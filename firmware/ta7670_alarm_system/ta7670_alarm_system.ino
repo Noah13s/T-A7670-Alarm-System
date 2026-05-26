@@ -10,6 +10,9 @@
 #include "Arduino.h"
 #include <Preferences.h>
 
+#include "soc/rtc_cntl_reg.h"
+#include "soc/soc.h"
+
 #define SIM_PIN "1234"
 
 Preferences prefs;
@@ -40,7 +43,8 @@ uint32_t AutoBaud() {
 }
 
 void setup() {
-  Serial.begin(115200);  // Set console baud rate
+  Serial.begin(115200);                       // Set console baud rate
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1);  // enable brownout detector
 
   Serial.println("Start Sketch");
 
