@@ -115,7 +115,8 @@ void checkSIM() {
 
   if (waitNetwork()) {
     if (emergencyContact.length() > 0) {
-      sendSMS(emergencyContact, "System started");
+      String batteryPercent = String(getBatteryPercent());
+      sendSMS(emergencyContact, "System started\nBattery Level : " + batteryPercent + "%");
     }
   } else {
     Serial.println("Network not ready, skipping boot SMS");
@@ -176,6 +177,7 @@ void handleSMS(String msg, int index) {
   if (body == "ARM") {
     armed = true;
     prefs.putBool("armed", armed);
+    alarmRing1();
     sendSMS(sender, "System armed");
     deleteSMS(index);
   }
@@ -200,6 +202,7 @@ void handleSMS(String msg, int index) {
   else if (body == "DISARM") {
     armed = false;
     prefs.putBool("armed", armed);
+    alarmRing2();
     sendSMS(sender, "System disarmed");
     deleteSMS(index);
   }
@@ -212,16 +215,38 @@ void handleSMS(String msg, int index) {
     String emergency = emergencyContact.length() > 0
                          ? emergencyContact
                          : "not set";
+    String batteryPercent = String(getBatteryPercent());
 
     sendSMS(
       sender,
-      "State: " + state + "\nSMS: " + status + "\nEmergency: " + emergency);
+      "State: " + state + "\nSMS: " + status + "\nEmergency: " + emergency + "\nBattery Level : " + batteryPercent + "%");
     deleteSMS(index);
   }
 
   else if (body == "CLEAR") {
     deleteAllSMS();
     sendSMS(sender, "All messages cleared");
+  }
+
+  else if (body == "ALARMTEST") {
+    toggleAlarm(true);
+    delay(2000);
+    toggleAlarm(false);
+    deleteSMS(index);
+  }
+
+  else if (body == "HELP") {
+    sendSMS(
+      sender,
+      "Available commands:\n"
+      "ARM\n"
+      "DISARM\n"
+      "STATUS\n"
+      "SETEMERGENCY +number\n"
+      "CLEAR\n"
+      "HELP");
+
+    deleteSMS(index);
   }
 
   else {
@@ -320,4 +345,3 @@ String getSMSStatus() {
 
   return String(used - 1) + "/" + String(max);
 }
-

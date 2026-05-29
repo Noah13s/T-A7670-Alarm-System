@@ -19,6 +19,8 @@ Preferences prefs;
 String line = "";
 
 bool armed = false;
+bool alarmTriggered = false;
+int vibrations = 0;
 String emergencyContact = "";
 
 uint32_t AutoBaud() {
@@ -48,8 +50,12 @@ void setup() {
 
   Serial.println("Start Sketch");
 
+  batterySetup();
+  alarmSetup();
+
   prefs.begin("alarm", false);
   armed = prefs.getBool("armed", false);
+  alarmTriggered = prefs.getBool("alarmTriggered", false);
   emergencyContact = prefs.getString("emergency", "");
 
   SerialAT.begin(115200, SERIAL_8N1, MODEM_RX_PIN, MODEM_TX_PIN);
