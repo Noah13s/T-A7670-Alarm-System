@@ -52,6 +52,7 @@ void setup() {
 
   batterySetup();
   alarmSetup();
+  sensorSetup();
 
   prefs.begin("alarm", false);
   armed = prefs.getBool("armed", false);
@@ -100,6 +101,7 @@ void setup() {
 }
 
 void loop() {
+  sensorLoop();
   while (SerialAT.available()) {
     char c = SerialAT.read();
     Serial.write(c);
