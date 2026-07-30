@@ -23,6 +23,11 @@ bool alarmTriggered = false;
 int vibrations = 0;
 String emergencyContact = "";
 
+// Set from the modem's unsolicited output while a call is in progress (see pumpModemSerial()).
+// Reset before each call attempt in callAlert().
+bool callWasAnswered = false;  // AT+CLCC reported state 0 (active) at least once
+bool modemCallEnded = false;   // modem reported "NO CARRIER" (call ended, whatever the reason)
+
 uint32_t AutoBaud() {
   static uint32_t rates[] = { 115200, 9600, 57600, 38400, 19200, 74400, 74880,
                               230400, 460800, 2400, 4800, 14400, 28800 };
@@ -100,8 +105,10 @@ void setup() {
   }
 }
 
-void loop() {
-  sensorLoop();
+// Reads and processes whatever the modem has sent so far (notably +CMTI for new SMS).
+// Kept as its own function so long blocking sequences (like the alarm phone calls)
+// can call it too, instead of only the main loop.
+void pumpModemSerial() {
   while (SerialAT.available()) {
     char c = SerialAT.read();
     Serial.write(c);
@@ -117,11 +124,36 @@ void loop() {
         readSMS(smsIndex);
       }
 
+      // call ended, whether it was answered-then-hung-up, rejected, or we hung up ourselves
+      else if (line == "NO CARRIER") {
+        modemCallEnded = true;
+      }
+
+      // response to our periodic "AT+CLCC" status check during a call
+      // format: +CLCC: <id>,<dir>,<stat>,<mode>,<mpty>[,<number>,<type>]
+      // stat 0 = active -> the call was picked up
+      else if (line.startsWith("+CLCC:")) {
+        int c1 = line.indexOf(',');
+        int c2 = line.indexOf(',', c1 + 1);
+        int c3 = line.indexOf(',', c2 + 1);
+        if (c2 != -1 && c3 != -1) {
+          int stat = line.substring(c2 + 1, c3).toInt();
+          if (stat == 0) {
+            callWasAnswered = true;
+          }
+        }
+      }
+
       line = "";
     } else {
       line += c;
     }
   }
+}
+
+void loop() {
+  sensorLoop();
+  pumpModemSerial();
 
   while (Serial.available()) {
     SerialAT.write(Serial.read());

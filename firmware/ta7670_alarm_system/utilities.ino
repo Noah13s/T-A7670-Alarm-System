@@ -302,6 +302,145 @@ void sendSMS(String number, String text) {
   Serial.println(resp);
 }
 
+// Dials a number. The call stays open until hangUp() is called or the
+// remote side hangs up; the modem only confirms the command was accepted, not that it was answered.
+bool makeCall(const String &number) {
+  String cmd = "ATD" + number + ";";
+  return sendATCommand(cmd, "OK", 10000);
+}
+
+bool hangUp() {
+  return sendATCommand("ATH", "OK", 3000);
+}
+
+// Waits up to 'ms' milliseconds while still servicing the modem serial line, so an
+// incoming SMS (e.g. DISARM) gets processed instead of sitting in the buffer.
+// Returns false as soon as the system is disarmed, so the caller can stop early.
+bool pollWhileArmed(uint32_t ms) {
+  uint32_t start = millis();
+  while (millis() - start < ms) {
+    pumpModemSerial();
+    if (!armed) {
+      return false;
+    }
+  }
+  return armed;
+}
+
+// Short, fixed pause after hanging up, giving the network a moment to release the
+// line before the next dial attempt. A bounded delay rather than an open-ended wait
+// for an explicit "line is free" confirmation, which can take an unpredictable amount
+// of time and would otherwise stall the whole alarm sequence.
+const uint32_t CALL_SETTLE_DELAY = 4000;
+const int DIAL_RETRY_COUNT = 4;
+const uint32_t DIAL_RETRY_GAP = 4000;
+
+// Tries to dial 'number', retrying a few times with a short pause if the modem rejects
+// the command outright with ERROR (usually because the previous call hasn't been
+// released by the network yet). Returns false only once every attempt has failed.
+bool dialWithRetry(const String &number) {
+  for (int attempt = 0; attempt < DIAL_RETRY_COUNT; attempt++) {
+    if (!armed) return false;
+
+    if (makeCall(number)) {
+      return true;
+    }
+
+    Serial.println("Dial rejected, retrying shortly");
+
+    if (attempt < DIAL_RETRY_COUNT - 1) {
+      if (!pollWhileArmed(DIAL_RETRY_GAP)) {
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
+// Watches one ongoing call for up to 'ringDuration' ms: polls AT+CLCC every second to
+// detect pick-up, watches for NO CARRIER, and keeps servicing the modem serial line
+// so DISARM is never missed. Hangs up itself only in the CALL_UNANSWERED case, then
+// gives the line a short fixed pause to settle before handing control back.
+CallOutcome waitForCallOutcome(uint32_t ringDuration) {
+  callWasAnswered = false;
+  modemCallEnded = false;
+
+  uint32_t start = millis();
+  uint32_t lastStatusCheck = 0;
+
+  while (millis() - start < ringDuration) {
+    pumpModemSerial();
+
+    if (!armed) {
+      hangUp();
+      return CALL_DISARMED;
+    }
+
+    if (modemCallEnded) {
+      return CALL_ENDED_EARLY;
+    }
+
+    if (callWasAnswered) {
+      hangUp();
+      return CALL_ANSWERED;
+    }
+
+    if (millis() - lastStatusCheck >= 1000) {
+      lastStatusCheck = millis();
+      SerialAT.println("AT+CLCC");
+    }
+  }
+
+  hangUp();
+  pollWhileArmed(CALL_SETTLE_DELAY);
+  return CALL_UNANSWERED;
+}
+
+// Places up to 'times' call attempts to 'number', ringDuration ms each, waiting 'gap' ms
+// between attempts. Stops as soon as the contact answers or the call ends on its own
+// (declined/dropped) - only an unanswered, fully-rung call leads to another attempt.
+void callAlert(const String &number, int times, uint32_t ringDuration, uint32_t gap) {
+  for (int i = 0; i < times; i++) {
+    if (!armed) {
+      Serial.println("Disarmed, aborting remaining calls");
+      return;
+    }
+
+    Serial.println("Emergency call attempt " + String(i + 1) + "/" + String(times));
+
+    if (!dialWithRetry(number)) {
+      Serial.println("Call attempt failed to initiate");
+    } else {
+      CallOutcome outcome = waitForCallOutcome(ringDuration);
+
+      switch (outcome) {
+        case CALL_ANSWERED:
+          Serial.println("Call answered, stopping escalation");
+          return;
+        case CALL_DISARMED:
+          Serial.println("Disarmed during call, stopping");
+          return;
+        case CALL_ENDED_EARLY:
+          // The call was never picked up (CLCC never reported the active state) - this is
+          // typically the network's own no-answer timeout, not a real interaction, so retry.
+          Serial.println("Call ended without being answered, will retry if attempts remain");
+          break;
+        case CALL_UNANSWERED:
+          Serial.println("No answer, will retry if attempts remain");
+          break;
+      }
+    }
+
+    if (i < times - 1) {
+      if (!pollWhileArmed(gap)) {
+        Serial.println("Disarmed, aborting remaining calls");
+        return;
+      }
+    }
+  }
+}
+
+
 void deleteSMS(int index) {
   String cmd = "AT+CMGD=" + String(index);
 

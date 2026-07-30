@@ -446,3 +446,14 @@
 // #define LILYGO_T_CALL_A7670_V1_1
 // #define LILYGO_T_A7608X_DC_S3
 
+// Outcome of a monitored phone call attempt (see waitForCallOutcome() in utilities.ino).
+// Declared here, rather than in a .ino file, because the Arduino IDE inserts its
+// auto-generated function prototypes above all .ino code - a custom type used as a
+// return type must already be known at that point, which a header include guarantees.
+enum CallOutcome {
+  CALL_UNANSWERED,   // rang the whole ringDuration, nobody reacted -> try again
+  CALL_ANSWERED,     // contact picked up (CLCC active state seen) -> they know, stop calling
+  CALL_ENDED_EARLY,  // NO CARRIER before pick-up (network no-answer timeout) -> not an interaction, try again
+  CALL_DISARMED      // DISARM SMS came in during the call -> abort everything
+};
+
