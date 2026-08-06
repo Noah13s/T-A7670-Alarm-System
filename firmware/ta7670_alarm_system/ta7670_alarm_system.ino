@@ -154,6 +154,7 @@ void pumpModemSerial() {
 void loop() {
   sensorLoop();
   pumpModemSerial();
+  batteryLoop();
 
   while (Serial.available()) {
     SerialAT.write(Serial.read());
