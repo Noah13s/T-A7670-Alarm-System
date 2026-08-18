@@ -9,6 +9,7 @@
 #include "utilities.h"
 #include "Arduino.h"
 #include <Preferences.h>
+#include <WiFi.h>
 
 #include "soc/rtc_cntl_reg.h"
 #include "soc/soc.h"
@@ -27,6 +28,30 @@ String emergencyContact = "";
 // Reset before each call attempt in callAlert().
 bool callWasAnswered = false;  // AT+CLCC reported state 0 (active) at least once
 bool modemCallEnded = false;   // modem reported "NO CARRIER" (call ended, whatever the reason)
+
+// The alarm only performs lightweight GPIO checks and AT-command parsing, so running
+// the ESP32 at 240 MHz wastes battery without improving response time. 80 MHz still
+// comfortably handles the 115200-baud modem UART and all alarm processing.
+const uint32_t POWER_SAVING_CPU_MHZ = 80;
+
+// Yield briefly on every pass instead of keeping a CPU core busy continuously. This
+// remains far shorter than VIBRATION_CONFIRM, so vibration detection stays responsive.
+const uint32_t MAIN_LOOP_IDLE_MS = 2;
+
+void powerSavingSetup() {
+  // Neither radio is used by this project; keep them explicitly disabled even if a
+  // future Arduino core or boot configuration leaves one of them initialized.
+  WiFi.mode(WIFI_OFF);
+#if defined(CONFIG_BT_ENABLED) && CONFIG_BT_ENABLED
+  btStop();
+#endif
+
+  if (setCpuFrequencyMhz(POWER_SAVING_CPU_MHZ)) {
+    Serial.printf("CPU frequency reduced to %u MHz\n", getCpuFrequencyMhz());
+  } else {
+    Serial.println("Failed to reduce CPU frequency; continuing at the current speed");
+  }
+}
 
 uint32_t AutoBaud() {
   static uint32_t rates[] = { 115200, 9600, 57600, 38400, 19200, 74400, 74880,
@@ -54,6 +79,8 @@ void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1);  // enable brownout detector
 
   Serial.println("Start Sketch");
+
+  powerSavingSetup();
 
   batterySetup();
   alarmSetup();
@@ -159,4 +186,6 @@ void loop() {
   while (Serial.available()) {
     SerialAT.write(Serial.read());
   }
+
+  delay(MAIN_LOOP_IDLE_MS);
 }
