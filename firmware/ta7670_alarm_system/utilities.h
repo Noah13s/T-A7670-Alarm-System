@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include <Arduino.h>
+
 // Note:
 
 // When using ArduinoIDE, you must select a corresponding board type.
@@ -66,6 +68,10 @@
     #define BOARD_POWERON_PIN                   (12)
     #define MODEM_RING_PIN                      (33)
     #define MODEM_RESET_PIN                     (5)
+    // GPIO34 is input-only and unused by the modem, UART, battery ADC, siren,
+    // power control, DTR and the peripherals enabled by this alarm project.
+    // GPIO33 is deliberately kept exclusively for the modem RI signal.
+    #define SENSOR_PIN                          (34)
     #define BOARD_MISO_PIN                      (2)
     #define BOARD_MOSI_PIN                      (15)
     #define BOARD_SCK_PIN                       (14)
@@ -457,3 +463,12 @@ enum CallOutcome {
   CALL_DISARMED      // DISARM SMS came in during the call -> abort everything
 };
 
+// Shared modem and power-management interfaces. Explicit declarations avoid
+// relying on the Arduino IDE's generated prototype order across .ino tabs.
+bool sendATCommand(const String &cmd, const String &expected, uint32_t timeout = 3000);
+void setupPowerManagement();
+void enableModemSleep();
+void modemWake();
+void modemSleep();
+void enterLightSleep();
+void handleWakeupReason();

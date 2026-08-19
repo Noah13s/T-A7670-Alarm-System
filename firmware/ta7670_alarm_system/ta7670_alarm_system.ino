@@ -29,43 +29,21 @@ String emergencyContact = "";
 bool callWasAnswered = false;  // AT+CLCC reported state 0 (active) at least once
 bool modemCallEnded = false;   // modem reported "NO CARRIER" (call ended, whatever the reason)
 
-// The alarm only performs lightweight GPIO checks and AT-command parsing, so running
-// the ESP32 at 240 MHz wastes battery without improving response time. 80 MHz still
-// comfortably handles the 115200-baud modem UART and all alarm processing.
-const uint32_t POWER_SAVING_CPU_MHZ = 80;
-
-// Yield briefly on every pass instead of keeping a CPU core busy continuously. This
-// remains far shorter than VIBRATION_CONFIRM, so vibration detection stays responsive.
-const uint32_t MAIN_LOOP_IDLE_MS = 2;
-
-void powerSavingSetup() {
-  // Neither radio is used by this project; keep them explicitly disabled even if a
-  // future Arduino core or boot configuration leaves one of them initialized.
-  WiFi.mode(WIFI_OFF);
-#if defined(CONFIG_BT_ENABLED) && CONFIG_BT_ENABLED
-  btStop();
-#endif
-
-  if (setCpuFrequencyMhz(POWER_SAVING_CPU_MHZ)) {
-    Serial.printf("CPU frequency reduced to %u MHz\n", getCpuFrequencyMhz());
-  } else {
-    Serial.println("Failed to reduce CPU frequency; continuing at the current speed");
-  }
-}
-
 uint32_t AutoBaud() {
+  modemWake();
+
   static uint32_t rates[] = { 115200, 9600, 57600, 38400, 19200, 74400, 74880,
                               230400, 460800, 2400, 4800, 14400, 28800 };
   for (uint8_t i = 0; i < sizeof(rates) / sizeof(rates[0]); i++) {
     uint32_t rate = rates[i];
-    Serial.printf("Trying baud rate %u\n", rate);
+    Serial.printf("Trying baud rate %lu\n", (unsigned long)rate);
     SerialAT.updateBaudRate(rate);
     delay(10);
     for (int j = 0; j < 10; j++) {
       SerialAT.print("AT\r\n");
       String input = SerialAT.readString();
       if (input.indexOf("OK") >= 0) {
-        Serial.printf("Modem responded at rate:%u\n", rate);
+        Serial.printf("Modem responded at rate:%lu\n", (unsigned long)rate);
         return rate;
       }
     }
@@ -80,7 +58,7 @@ void setup() {
 
   Serial.println("Start Sketch");
 
-  powerSavingSetup();
+  setupPowerManagement();
 
   batterySetup();
   alarmSetup();
@@ -125,6 +103,7 @@ void setup() {
     Serial.println(F("***********************************************************\n"));
 
     checkSIM();
+    enableModemSleep();
   } else {
     Serial.println(F("***********************************************************"));
     Serial.println(F(" Failed to connect to the modem! Check the baud and try again."));
@@ -136,6 +115,10 @@ void setup() {
 // Kept as its own function so long blocking sequences (like the alarm phone calls)
 // can call it too, instead of only the main loop.
 void pumpModemSerial() {
+  if (!SerialAT.available()) return;
+
+  modemWake();
+
   while (SerialAT.available()) {
     char c = SerialAT.read();
     Serial.write(c);
@@ -184,8 +167,9 @@ void loop() {
   batteryLoop();
 
   while (Serial.available()) {
+    modemWake();
     SerialAT.write(Serial.read());
   }
 
-  delay(MAIN_LOOP_IDLE_MS);
+  enterLightSleep();
 }

@@ -1,4 +1,6 @@
 const int mosfetSignalPin = 32;  // GPIO connected to HW-042 signal pin
+// This pin only disables the siren output. If the XL6019 input remains connected
+// permanently, its idle/quiescent consumption must be measured and solved in hardware.
 
 void alarmSetup() {
   pinMode(mosfetSignalPin, OUTPUT);

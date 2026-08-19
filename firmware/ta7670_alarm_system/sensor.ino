@@ -1,7 +1,5 @@
-#define SENSOR_PIN 33
-// NOTE: on the T-A7670 board (utilities.h), pin 33 is also MODEM_RING_PIN.
-// If the modem ever drives that pin, it will look like a false vibration.
-// Move the sensor to a free GPIO if you see unexplained triggers.
+// SENSOR_PIN is GPIO34 in utilities.h. It is an input-only pin, which suits the
+// SW-420 digital output and leaves GPIO33 exclusively connected to the modem RI line.
 
 // Vibration counting window: detections inside this window are summed together
 const unsigned long VIBRATION_TIMEOUT = 5000;    // 5 seconds
@@ -9,6 +7,9 @@ const unsigned long VIBRATION_TIMEOUT = 5000;    // 5 seconds
 const unsigned long VIBRATION_DEBOUNCE = 300;    // 300 ms
 // The signal must stay HIGH this long to be treated as a real vibration and not electrical noise
 const unsigned long VIBRATION_CONFIRM = 30;      // 30 ms
+// Keep the CPU awake until the SW-420 output has been stable for one debounce period.
+// This absorbs the comparator's rapid HIGH/LOW chatter without a sleep/wake loop.
+const unsigned long SENSOR_QUIET_TIME = VIBRATION_DEBOUNCE;
 // Number of vibrations inside VIBRATION_TIMEOUT needed to trigger the alarm
 const int VIBRATION_THRESHOLD = 3;
 // How long the siren stays on once triggered
@@ -27,15 +28,58 @@ const unsigned long ALARM_CALL_GAP = 2000;            // pause between call atte
 unsigned long lastVibrationTime = 0;
 unsigned long alarmStartTime = 0;
 unsigned long sensorHighSince = 0;
+unsigned long lastSensorStateChangeTime = 0;
 
 bool vibrationDetected = false;
 bool sensorCandidate = false;
+int lastSensorState = LOW;
+
+// A candidate must remain awake long enough to complete the 30 ms confirmation.
+// Once an event has been counted, light sleep can wait for the signal to return LOW.
+bool sensorCanEnterLightSleep() {
+  if (sensorCandidate) return false;
+  if (armed && !alarmTriggered &&
+      millis() - lastSensorStateChangeTime < SENSOR_QUIET_TIME) {
+    return false;
+  }
+  return true;
+}
+
+// Return the next sensor/alarm deadline so power.ino can program the shared wake timer.
+uint32_t sensorTimeUntilDeadlineMs() {
+  unsigned long now = millis();
+  uint32_t remaining = UINT32_MAX;
+
+  if (alarmTriggered && armed) {
+    unsigned long elapsed = now - alarmStartTime;
+    remaining = elapsed >= ALARM_DURATION ? 1 : ALARM_DURATION - elapsed;
+  }
+
+  if (!alarmTriggered && armed && vibrations > 0) {
+    unsigned long elapsed = now - lastVibrationTime;
+    uint32_t vibrationRemaining =
+      elapsed >= VIBRATION_TIMEOUT ? 1 : VIBRATION_TIMEOUT - elapsed;
+    if (vibrationRemaining < remaining) remaining = vibrationRemaining;
+  }
+
+  return remaining;
+}
 
 void sensorSetup() {
   pinMode(SENSOR_PIN, INPUT);
+  lastSensorState = digitalRead(SENSOR_PIN);
+  lastSensorStateChangeTime = millis();
 }
 
 void sensorLoop() {
+  int sensorState = digitalRead(SENSOR_PIN);
+  unsigned long now = millis();
+
+  if (sensorState != lastSensorState) {
+    lastSensorState = sensorState;
+    lastSensorStateChangeTime = now;
+  }
+
   // Alarm is currently sounding
   if (alarmTriggered) {
     if (!armed) {
@@ -57,9 +101,6 @@ void sensorLoop() {
     sensorCandidate = false;
     return;
   }
-
-  int sensorState = digitalRead(SENSOR_PIN);
-  unsigned long now = millis();
 
   if (sensorState == HIGH) {
     if (!vibrationDetected) {

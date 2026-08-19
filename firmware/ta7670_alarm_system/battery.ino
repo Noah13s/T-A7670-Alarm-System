@@ -6,7 +6,7 @@
 
 // --- NEW VARIABLES FOR MONITORING ---
 unsigned long lastBatteryCheckTime = 0;
-const unsigned long BATTERY_CHECK_INTERVAL = 60000; // Check every 60 seconds
+const unsigned long BATTERY_CHECK_INTERVAL = 6UL * 60UL * 60UL * 1000UL; // Every 6 hours
 int lastNotifiedThreshold = 100; 
 
 void batterySetup() {
@@ -32,8 +32,12 @@ int getBatteryPercent() {
 uint32_t getBatteryMv() {
   uint32_t batteryMv = analogReadMilliVolts(BOARD_BAT_ADC_PIN);
   batteryMv *= 2;  // voltage divider compensation
-  float batteryV = batteryMv / 1000.0;
   return batteryMv;
+}
+
+uint32_t batteryTimeUntilCheckMs() {
+  unsigned long elapsed = millis() - lastBatteryCheckTime;
+  return elapsed >= BATTERY_CHECK_INTERVAL ? 1 : BATTERY_CHECK_INTERVAL - elapsed;
 }
 
 // --- NEW FUNCTION: MONITORING LOOP ---

@@ -1,4 +1,5 @@
-bool sendATCommand(const String &cmd, const String &expected, uint32_t timeout = 3000) {
+bool sendATCommand(const String &cmd, const String &expected, uint32_t timeout) {
+  modemWake();
   Serial.println(">> " + cmd);
 
   // Flush old data
@@ -28,6 +29,7 @@ bool sendATCommand(const String &cmd, const String &expected, uint32_t timeout =
 }
 
 bool waitNetwork(uint32_t timeout = 30000) {
+  modemWake();
   uint32_t start = millis();
 
   while (millis() - start < timeout) {
@@ -54,6 +56,8 @@ bool waitNetwork(uint32_t timeout = 30000) {
 }
 
 void checkSIM() {
+  modemWake();
+
   // Basic AT test
   if (sendATCommand("AT", "OK")) {
     Serial.println("AT test successful");
@@ -87,8 +91,11 @@ void checkSIM() {
 
   Serial.println(response);
 
+  bool simReady = false;
+
   if (response.indexOf("+CPIN: READY") != -1) {
     Serial.println("SIM already unlocked");
+    simReady = true;
   } else if (response.indexOf("+CPIN: SIM PIN") != -1) {
     Serial.println("SIM requires PIN, sending PIN...");
 
@@ -97,20 +104,26 @@ void checkSIM() {
 
     if (sendATCommand(cmd, "OK", 10000)) {
       Serial.println("SIM unlocked successfully");
-      if (sendATCommand("AT+CMGF=1", "OK")) {
-        Serial.println("SMS mode set to text");
-        if (sendATCommand("AT+CNMI=2,1,0,0,0", "OK")) {
-          Serial.println("Activated ESP32 SMS notification");
-          if (sendATCommand("AT+CSCS=\"GSM\"", "OK")) {
-            Serial.println("SMS charset set to GSM");
-          }
-        }
-      }
+      simReady = true;
     } else {
       Serial.println("Failed to unlock SIM");
     }
   } else {
     Serial.println("Unknown SIM state");
+  }
+
+  if (!simReady) return;
+
+  // Configure SMS indications on every boot, including when the SIM was already
+  // unlocked. This is required so an incoming SMS asserts RI and produces +CMTI.
+  if (sendATCommand("AT+CMGF=1", "OK")) {
+    Serial.println("SMS mode set to text");
+  }
+  if (sendATCommand("AT+CNMI=2,1,0,0,0", "OK")) {
+    Serial.println("Activated ESP32 SMS notification");
+  }
+  if (sendATCommand("AT+CSCS=\"GSM\"", "OK")) {
+    Serial.println("SMS charset set to GSM");
   }
 
   if (waitNetwork()) {
@@ -124,6 +137,7 @@ void checkSIM() {
 }
 
 void readSMS(int index) {
+  modemWake();
   String cmd = "AT+CMGR=" + String(index);
 
   SerialAT.println(cmd);
@@ -256,6 +270,8 @@ void handleSMS(String msg, int index) {
 }
 
 void sendSMS(String number, String text) {
+  modemWake();
+
   // flush input first
   while (SerialAT.available()) SerialAT.read();
 
@@ -296,7 +312,13 @@ void sendSMS(String number, String text) {
       resp += (char)SerialAT.read();
     }
 
-    if (resp.indexOf("+CMGS") != -1) break;
+    // Consume both the message reference and the final OK. Stopping at +CMGS alone
+    // leaves OK queued, where the next AT command could mistake it for its response.
+    int messageReference = resp.indexOf("+CMGS:");
+    if (messageReference != -1 &&
+        resp.indexOf("\r\nOK\r\n", messageReference) != -1) {
+      break;
+    }
   }
 
   Serial.println(resp);
@@ -456,6 +478,7 @@ void deleteAllSMS() {
 }
 
 String getSMSStatus() {
+  modemWake();
   SerialAT.println("AT+CPMS?");
 
   String resp = "";
